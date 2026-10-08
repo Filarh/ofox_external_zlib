@@ -1611,6 +1611,26 @@ local void fill_window_c(s)
         s->lookahead += n;
 
         /* Initialize the hash value now that we have some input: */
+        if (x86_cpu_enable_simd || arm_cpu_enable_crc32) {
+            /* CRC (Castagnoli) hashing is active: the pending s->insert
+             * strings must be inserted with the same hash function that
+             * deflate_*() and longest_match() use, i.e. insert_string().
+             * Inserting them with the Rabin-Karp UPDATE_HASH() puts them in
+             * the wrong hash chain, and longest_match() (which does not
+             * compare byte 2 when CRC hashing is on) can then emit a bogus
+             * match -> corrupt deflate stream. insert_string_simd() reads 4
+             * bytes, hence the '>' instead of '>='. */
+            if (s->lookahead + s->insert > MIN_MATCH) {
+                uInt str = s->strstart - s->insert;
+                while (s->insert) {
+                    insert_string(s, str);
+                    str++;
+                    s->insert--;
+                    if (s->lookahead + s->insert <= MIN_MATCH)
+                        break;
+                }
+            }
+        } else
         if (s->lookahead + s->insert >= MIN_MATCH) {
             uInt str = s->strstart - s->insert;
             s->ins_h = s->window[str];
